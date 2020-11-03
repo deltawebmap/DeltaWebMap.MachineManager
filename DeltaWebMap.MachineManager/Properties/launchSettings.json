@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "DeltaWebMap.MachineManager": {
+      "commandName": "Project",
+      "commandLineArgs": "E:\\\\machine_config.json E:\\\\DeltaWebMap\\\\MachineManager\\\\manager_config.json"
+    }
+  }
+}
