@@ -29,6 +29,10 @@ namespace DeltaWebMap.MachineManager.Framework.Tools
                 logger?.LogCLIOutput(line);
             }
 
+            //Wait for end
+            logger?.LogCLIOutput("Output stream closed. Waiting for process to exit...");
+            p.WaitForExit();
+
             //Log
             logger?.LogCLICompletion(p.ExitCode);
 

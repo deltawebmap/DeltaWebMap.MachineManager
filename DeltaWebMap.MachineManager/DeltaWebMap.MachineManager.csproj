@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\DeltaWebMap\LibDeltaSystem\LibDeltaSystem\LibDeltaSystem.csproj" />
+    <ProjectReference Include="..\..\LibDeltaSystem\LibDeltaSystem\LibDeltaSystem.csproj" />
   </ItemGroup>
 
 </Project>
