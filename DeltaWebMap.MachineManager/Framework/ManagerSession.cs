@@ -59,6 +59,13 @@ namespace DeltaWebMap.MachineManager.Framework
 
             //Open server
             session.routerServer = new RouterServer(session);
+            session.Log("LoadSession", "Started internal server successfully.", DeltaLogLevel.Medium);
+
+            //Start all instances
+            session.Log("LoadSession", "Starting instances...", DeltaLogLevel.Medium);
+            foreach (var i in session.instances)
+                i.StartInstance(session);
+            session.Log("LoadSession", $"Started all {session.instances} instances!", DeltaLogLevel.Medium);
 
             return session;
         }
