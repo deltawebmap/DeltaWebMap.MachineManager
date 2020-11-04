@@ -43,14 +43,21 @@ namespace DeltaWebMap.MachineManager.Framework.Entities
             });
         }
 
-        public void StopInstance()
+        public bool StopInstance()
         {
+            bool graceful = true;
             if(instance != null)
             {
                 instance.CloseMainWindow();
-                instance.WaitForExit();
+                instance.WaitForExit(10000);
+                if(!instance.HasExited)
+                {
+                    instance.Kill();
+                    graceful = false;
+                }
             }
             instance = null;
+            return graceful;
         }
 
         public void UpdateInstance(ManagerSession session, IManagerCommandLogger logger)
@@ -71,7 +78,10 @@ namespace DeltaWebMap.MachineManager.Framework.Entities
 
             //Stop the current instance
             logger.Log("UpdateInstance", "Shutting down current instance...");
-            StopInstance();
+            if(StopInstance())
+                logger.Log("UpdateInstance", "Instance shut down gracefully.");
+            else
+                logger.Log("UpdateInstance", "Waiting for stop timed out after 10 seconds. Instance was forcefully killed.");
 
             //Update
             logger.Log("UpdateInstance", "Applying changes and restarting instance...");
@@ -88,11 +98,14 @@ namespace DeltaWebMap.MachineManager.Framework.Entities
         public void DestoryInstance(ManagerSession session, IManagerCommandLogger logger)
         {
             //Stop the current instance
-            logger.Log("UpdateInstance", "Shutting down current instance...");
-            StopInstance();
+            logger.Log("DestroyInstance", "Shutting down current instance...");
+            if (StopInstance())
+                logger.Log("DestroyInstance", "Instance shut down gracefully.");
+            else
+                logger.Log("DestroyInstance", "Waiting for stop timed out after 10 seconds. Instance was forcefully killed.");
 
             //Remove this from the list and remove used ports
-            logger.Log("UpdateInstance", "Applying changes...");
+            logger.Log("DestroyInstance", "Applying changes...");
             session.instances.Remove(this);
             foreach (int port in ports)
                 session.used_user_ports.Remove(port);
