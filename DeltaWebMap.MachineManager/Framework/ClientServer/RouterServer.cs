@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Tasks;
 
 namespace DeltaWebMap.MachineManager.Framework.ClientServer
 {
@@ -43,15 +44,17 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
                 //Authenticated commands
                 if (msg.opcode == RouterConnection.OPCODE_SYS_GETCFG)
                     HandleRequestConfigCommand(session, msg);
+                else if (msg.opcode == RouterConnection.OPCODE_SYS_USERCFG)
+                    HandleRequestUserConfigCommand(session, msg);
                 else
-                    logger.Log("Io_OnClientMessage", $"Client {session.GetDebugName()} sent an unknown command.", DeltaLogLevel.Debug);
+                    logger.Log("Io_OnClientMessage", $"Client {session.GetDebugName()} sent an unknown command ({msg.opcode}).", DeltaLogLevel.Debug);
             } else
             {
                 //Unauthenticated commands
                 if (msg.opcode == RouterConnection.OPCODE_SYS_LOGIN)
                     HandleLoginCommand(session, msg);
                 else
-                    logger.Log("Io_OnClientMessage", $"Client {session.GetDebugName()} sent unauthenticated command that was not LOGIN.", DeltaLogLevel.Debug);
+                    logger.Log("Io_OnClientMessage", $"Client {session.GetDebugName()} sent unauthenticated command that was not LOGIN ({msg.opcode}).", DeltaLogLevel.Debug);
             }
         }
 
@@ -113,6 +116,27 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
 
             //Respond
             msg.RespondJson(response, true);
+        }
+
+        private void HandleRequestUserConfigCommand(RouterSession session, RouterMessage msg)
+        {
+            ProxyRequestToMaster(session, msg, MasterConnectionOpcodes.OPCODE_MASTER_GETUSERCFG);
+        }
+
+        private void ProxyRequestToMaster(RouterSession session, RouterMessage msg, short opcode)
+        {
+            var channel = this.session.masterConnection.SendMessageGetResponseChannel(opcode, msg.payload);
+            ProcessProxiedMessage(channel, session, msg);
+        }
+
+        private void ProcessProxiedMessage(System.Threading.Channels.ChannelReader<RouterMessage> channel, RouterSession session, RouterMessage msg)
+        {
+            channel.ReadAsync().AsTask().ContinueWith((Task<RouterMessage> m) =>
+            {
+                msg.Respond(m.Result.payload, m.Result.flagIsLast);
+                if(!m.Result.flagIsLast)
+                    ProcessProxiedMessage(channel, session, msg);
+            });
         }
     }
 }

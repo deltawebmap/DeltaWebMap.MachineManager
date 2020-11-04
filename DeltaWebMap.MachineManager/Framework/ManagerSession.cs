@@ -65,7 +65,7 @@ namespace DeltaWebMap.MachineManager.Framework
             session.Log("LoadSession", "Starting instances...", DeltaLogLevel.Medium);
             foreach (var i in session.instances)
                 i.StartInstance(session);
-            session.Log("LoadSession", $"Started all {session.instances} instances!", DeltaLogLevel.Medium);
+            session.Log("LoadSession", $"Started all {session.instances.Count} instances!", DeltaLogLevel.Medium);
 
             return session;
         }
