@@ -270,7 +270,7 @@ namespace DeltaWebMap.MachineManager.Framework
             foreach(var s in sites)
             {
                 //Write balancer stuff
-                file += $"#DELTA MANAGED BALANCER {s.Key}\n<Proxy \"balancer://DeltaManagedBalancer_{s.Value.id}\">\n";
+                file += $"<Proxy \"balancer://DeltaManagedBalancer_{s.Value.id}\">\n\t#DELTA MANAGED BALANCER {s.Key}\n";
                 foreach (var i in instances)
                 {
                     if (i.site_id == s.Value.id)
@@ -283,10 +283,10 @@ namespace DeltaWebMap.MachineManager.Framework
             foreach (var s in sites)
             {
                 //Write HTTP host
-                file += $"<VirtualHost *:80>\n\t#DELTA MANAGED SITE (HTTP) {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n\tProxyPass \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n</VirtualHost>\n";
+                file += $"<VirtualHost *:80>\n\t#DELTA MANAGED SITE (HTTP) {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n\tProxyPass \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n\tProxyPassReverse \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n</VirtualHost>\n";
 
                 //Write SSL host
-                file += $"<VirtualHost *:443>\n\t#DELTA MANAGED SITE (SSL) {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n\tProxyPass \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n";
+                file += $"<VirtualHost *:443>\n\t#DELTA MANAGED SITE (SSL) {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n\tProxyPass \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n\tProxyPassReverse \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n";
                 file += $"\tInclude /etc/letsencrypt/options-ssl-apache.conf\n\tSSLCertificateFile {CERT_ROOT_PATH}{s.Value.cert_name}/fullchain.pem\n\tSSLCertificateKeyFile {CERT_ROOT_PATH}{s.Value.cert_name}/privkey.pem\n</VirtualHost>\n";
             }
 
@@ -294,7 +294,7 @@ namespace DeltaWebMap.MachineManager.Framework
             file += "</IfModule>";
 
             //Save
-            File.WriteAllText("/etc/apache2/sites-available/delta-managed", file);
+            File.WriteAllText("/etc/apache2/sites-available/delta-managed-sites.conf", file);
 
             //Refresh
             return 0 == CLITool.RunCLIProcess("service", "apache2 reload", null, null, null);

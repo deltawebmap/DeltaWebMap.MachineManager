@@ -59,6 +59,8 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
                 OnCmdAddSite(msg);
             else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_M_LISTSITES)
                 msg.RespondJson(MiscTools.DictToList(session.sites), true);
+            else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_M_ASSIGNSITE)
+                OnCmdAssignSite(msg);
             else
                 Log("MasterConnection_OnRouterReceiveMessage", $"Got message with unknown opcode {msg.opcode}.", DeltaLogLevel.Medium);
         }
@@ -242,6 +244,38 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
             try
             {
                 session.AddSite(args, logger);
+            }
+            catch (Exception ex)
+            {
+                logger.FinishFail($"Unexpected error: {ex.Message}{ex.StackTrace}");
+            }
+        }
+
+        private void OnCmdAssignSite(RouterMessage msg)
+        {
+            //Decode arguments and create logger
+            ManagerAssignSite args = msg.DeserializeAs<ManagerAssignSite>();
+            MasterCommandLogger logger = new MasterCommandLogger(msg);
+
+            //Update if it was supposed to be null
+            if (args.site_id == "")
+                args.site_id = null;
+
+            //Find instance
+            ManagerInstance instance = session.GetInstanceById(long.Parse(args.instance_id));
+            if (instance == null)
+            {
+                logger.FinishFail("Could not find that instance on the server.");
+                return;
+            }
+
+            //Run
+            try
+            {
+                //Update
+                instance.site_id = args.site_id;
+                session.Save();
+                session.RefreshSites();
             }
             catch (Exception ex)
             {
