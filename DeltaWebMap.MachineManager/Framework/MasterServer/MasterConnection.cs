@@ -55,6 +55,10 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
                 OnCmdRemoveInstance(msg);
             else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_M_DELETEVERSION)
                 OnCmdDeleteVersion(msg);
+            else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_M_ADDSITE)
+                OnCmdAddSite(msg);
+            else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_M_LISTSITES)
+                msg.RespondJson(MiscTools.DictToList(session.sites), true);
             else
                 Log("MasterConnection_OnRouterReceiveMessage", $"Got message with unknown opcode {msg.opcode}.", DeltaLogLevel.Medium);
         }
@@ -221,6 +225,23 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
             try
             {
                 version.DeleteVersion(session, logger);
+            }
+            catch (Exception ex)
+            {
+                logger.FinishFail($"Unexpected error: {ex.Message}{ex.StackTrace}");
+            }
+        }
+
+        private void OnCmdAddSite(RouterMessage msg)
+        {
+            //Decode arguments and create logger
+            ManagerAddSite args = msg.DeserializeAs<ManagerAddSite>();
+            MasterCommandLogger logger = new MasterCommandLogger(msg);
+
+            //Run
+            try
+            {
+                session.AddSite(args, logger);
             }
             catch (Exception ex)
             {

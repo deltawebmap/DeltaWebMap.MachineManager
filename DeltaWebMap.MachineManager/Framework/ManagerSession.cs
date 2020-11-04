@@ -19,6 +19,7 @@ namespace DeltaWebMap.MachineManager.Framework
         public Dictionary<string, ManagerPackage> packages = new Dictionary<string, ManagerPackage>();
         public Dictionary<string, ManagerVersion> versions = new Dictionary<string, ManagerVersion>();
         public List<ManagerInstance> instances = new List<ManagerInstance>();
+        public Dictionary<string, ManagerSite> sites = new Dictionary<string, ManagerSite>();
         public List<int> used_user_ports = new List<int>();
         public string dotnet_path = "dotnet";
         public string build_path;
@@ -121,7 +122,7 @@ namespace DeltaWebMap.MachineManager.Framework
             int status = new GitTool(package.GetGitPath(this), logger).Clone(cmd.git_repo, "AddPackage", "Cloning...");
             if(status != 0)
             {
-                logger.FinishFail("Failed to clone source project files. Aborting!");
+                logger.FinishFail($"Failed to clone source project files. (Code {status}) Aborting!");
                 return null;
             }
 
@@ -197,6 +198,54 @@ namespace DeltaWebMap.MachineManager.Framework
             return newInstances;
         }
 
+        public ManagerSite AddSite(ManagerAddSite cmd, IManagerCommandLogger logger)
+        {
+            //Generate a new ID
+            long id;
+            while (true)
+            {
+                //Create
+                byte[] idBytes = new byte[8];
+                rand.NextBytes(idBytes);
+                id = Math.Abs(BitConverter.ToInt64(idBytes));
+
+                //Check
+                if (!sites.ContainsKey(id.ToString()))
+                    break;
+            }
+
+            //Create site data
+            ManagerSite site = new ManagerSite
+            {
+                id = id.ToString(),
+                cert_name = "DeltaManagedCert_" + id.ToString(),
+                document_root = cmd.document_root,
+                proto = cmd.proto,
+                proxy_root = cmd.proxy_root,
+                site_domain = cmd.domain,
+                cert_expiry = DateTime.UtcNow.AddMonths(3)
+            };
+
+            //Create+sign SSL certificate
+            logger?.Log("AddSite", "Creating and signing a new SSL certificate...");
+            int status = CLITool.RunCLIProcess("certbot", $"certonly -n --cert-name {site.cert_name} --standalone --preferred-challenges http -d {site.site_domain}", logger, "AddSite", "Creating and signing SSL certificate...");
+            if(status != 0)
+            {
+                logger?.FinishFail($"Could not create SSL certificate! (Code {status})");
+                return null;
+            }
+
+            //Add
+            sites.Add(site.id, site);
+            Save();
+
+            //Finish
+            RefreshSites();
+            logger.FinishSuccess($"Successfully added site {site.site_domain}.");
+
+            return site;
+        }
+
         public ManagerInstance GetInstanceById(long id)
         {
             foreach(var i in instances)
@@ -205,6 +254,50 @@ namespace DeltaWebMap.MachineManager.Framework
                     return i;
             }
             return null;
+        }
+
+        private const string CERT_ROOT_PATH = "/etc/letsencrypt/live/";
+
+        /// <summary>
+        /// Refreshes the sites for Apache2
+        /// </summary>
+        public bool RefreshSites()
+        {
+            //Build site file
+            string file = "#THIS FILE IS AUTOMATICALLY MANAGED BY DELTAWEBMAP MACHINE MANAGER.\n#EDITS WILL BE OVERWRITTEN.\n<IfModule mod_ssl.c>\n";
+
+            //Write each balancer
+            foreach(var s in sites)
+            {
+                //Write balancer stuff
+                file += $"#DELTA MANAGED BALANCER {s.Key}\n<Proxy \"balancer://DeltaManagedBalancer_{s.Value.id}\">\n";
+                foreach (var i in instances)
+                {
+                    if (i.site_id == s.Value.id)
+                        file += $"\tBalancerMember \"{s.Value.proto}://0.0.0.0:{i.ports[0]}\"\n";
+                }
+                file += "</Proxy>\n";
+            }
+
+            //Write each site
+            foreach (var s in sites)
+            {
+                //Write HTTP host
+                file += $"<VirtualHost *:80>\n\t#DELTA MANAGED SITE (HTTP) {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n\tProxyPass \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n</VirtualHost>\n";
+
+                //Write SSL host
+                file += $"<VirtualHost *:443>\n\t#DELTA MANAGED SITE (SSL) {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n\tProxyPass \"{s.Value.proxy_root}\" \"balancer://DeltaManagedBalancer_{s.Value.id}\"\n";
+                file += $"\tInclude /etc/letsencrypt/options-ssl-apache.conf\n\tSSLCertificateFile {CERT_ROOT_PATH}{s.Value.cert_name}/fullchain.pem\n\tSSLCertificateKeyFile {CERT_ROOT_PATH}{s.Value.cert_name}/privkey.pem\n</VirtualHost>\n";
+            }
+
+            //Write footer
+            file += "</IfModule>";
+
+            //Save
+            File.WriteAllText("/etc/apache2/sites-available/delta-managed", file);
+
+            //Refresh
+            return 0 == CLITool.RunCLIProcess("service", "apache2 reload", null, null, null);
         }
     }
 }
