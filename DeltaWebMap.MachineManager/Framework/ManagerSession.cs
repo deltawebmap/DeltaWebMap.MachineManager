@@ -227,8 +227,15 @@ namespace DeltaWebMap.MachineManager.Framework
                 id = id.ToString(),
                 cert_name = "DeltaManagedCert_" + id.ToString(),
                 document_root = cmd.document_root,
-                proto = cmd.proto,
-                proxy_root = cmd.proxy_root,
+                proxies = new LibDeltaSystem.CoreNet.NetMessages.Master.Entities.NetManagerSite_Proxy[]
+                {
+                    new LibDeltaSystem.CoreNet.NetMessages.Master.Entities.NetManagerSite_Proxy
+                    {
+                        to_path = "/",
+                        from_path = cmd.proxy_root,
+                        proto = cmd.proto
+                    }
+                },
                 site_domain = cmd.domain,
                 cert_expiry = DateTime.UtcNow.AddMonths(3)
             };
@@ -284,43 +291,39 @@ namespace DeltaWebMap.MachineManager.Framework
         public bool RefreshSites()
         {
             //Build site file
-            string file = "#THIS FILE IS AUTOMATICALLY MANAGED BY DELTAWEBMAP MACHINE MANAGER.\n#EDITS WILL BE OVERWRITTEN.\n<IfModule mod_ssl.c>\n";
-
-            //Write each balancer
-            foreach(var s in sites)
-            {
-                file += CreateBalancerString(s.Value, "http");
-                if (s.Value.websock_endpoints.Length > 0)
-                    file += CreateBalancerString(s.Value, "ws");
-            }
+            string balancersPart = "";
+            string sitesPart = "";
 
             //Write each site
             foreach (var s in sites)
             {
-                //Create base
+                //Add each balancer
+                List<string> addedBalancers = new List<string>();
+                foreach(var p in s.Value.proxies)
+                {
+                    if (addedBalancers.Contains(p.proto))
+                        continue;
+                    balancersPart += CreateBalancerString(s.Value, p.proto);
+                    addedBalancers.Add(p.proto);
+                }
+                
+                //Create base for sites
                 string baseData = $"\t#DELTA MANAGED SITE {s.Key}\n\tServerName {s.Value.site_domain}\n\tServerAdmin webmaster@localhost\n\tDocumentRoot {s.Value.document_root}\n\tProxyPreserveHost On\n";
-                baseData += CreateProxyPassString(s.Value, s.Value.proxy_root, "http");
-                foreach(var e in s.Value.websock_endpoints)
-                    baseData += CreateProxyPassString(s.Value, e, "ws");
+                foreach(var p in s.Value.proxies)
+                {
+                    baseData += $"\tProxyPass \"{p.from_path}\" \"balancer://DeltaManagedBalancer_{s.Value.id}_{p.proto}{p.to_path}\"\n\tProxyPassReverse \"{p.from_path}\" \"balancer://DeltaManagedBalancer_{s.Value.id}_{p.proto}{p.to_path}\"\n";
+                }
 
                 //Write SSL and HTTP hosts
-                file += $"<VirtualHost *:80>\n{baseData}</VirtualHost>\n";
-                file += $"<VirtualHost *:443>\n{baseData}\tInclude /etc/letsencrypt/options-ssl-apache.conf\n\tSSLCertificateFile {CERT_ROOT_PATH}{s.Value.cert_name}/fullchain.pem\n\tSSLCertificateKeyFile {CERT_ROOT_PATH}{s.Value.cert_name}/privkey.pem\n</VirtualHost>\n";
+                sitesPart += $"<VirtualHost *:80>\n{baseData}</VirtualHost>\n";
+                sitesPart += $"<VirtualHost *:443>\n{baseData}\tInclude /etc/letsencrypt/options-ssl-apache.conf\n\tSSLCertificateFile {CERT_ROOT_PATH}{s.Value.cert_name}/fullchain.pem\n\tSSLCertificateKeyFile {CERT_ROOT_PATH}{s.Value.cert_name}/privkey.pem\n</VirtualHost>\n";
             }
 
-            //Write footer
-            file += "</IfModule>";
-
             //Save
-            File.WriteAllText("/etc/apache2/sites-available/delta-managed-sites.conf", file);
+            File.WriteAllText("/etc/apache2/sites-available/delta-managed-sites.conf", $"#THIS FILE IS AUTOMATICALLY MANAGED BY DELTAWEBMAP MACHINE MANAGER.\n#EDITS WILL BE OVERWRITTEN.\n{balancersPart}{sitesPart}");
 
             //Refresh
             return 0 == CLITool.RunTerminalCommand("service apache2 reload", null, null, null);
-        }
-
-        private string CreateProxyPassString(ManagerSite s, string proxyRoot, string proto)
-        {
-            return $"\tProxyPass \"{proxyRoot}\" \"balancer://DeltaManagedBalancer_{s.id}_{proto}/\"\n\tProxyPassReverse \"{proxyRoot}\" \"balancer://DeltaManagedBalancer_{s.id}_{proto}/\"\n";
         }
 
         private string CreateBalancerString(ManagerSite t, string proto)
