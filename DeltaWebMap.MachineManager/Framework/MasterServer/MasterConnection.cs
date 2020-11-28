@@ -61,6 +61,10 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
                 msg.RespondJson(MiscTools.DictToList(session.sites), true);
             else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_M_ASSIGNSITE)
                 OnCmdAssignSite(msg);
+            else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_REBOOT_INSTANCE)
+                OnCmdRebootInstance(msg);
+            else if (msg.opcode == MasterConnectionOpcodes.OPCODE_MASTER_PING_INSTANCE)
+                OnCmdGetInstanceStatus(msg).GetAwaiter().GetResult();
             else
                 Log("MasterConnection_OnRouterReceiveMessage", $"Got message with unknown opcode {msg.opcode}.", DeltaLogLevel.Medium);
         }
@@ -91,6 +95,45 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
                 version_lib_major = DeltaConnection.LIB_VERSION_MAJOR,
                 version_lib_minor = DeltaConnection.LIB_VERSION_MINOR
             }, true);
+        }
+
+        private async Task OnCmdGetInstanceStatus(RouterMessage msg)
+        {
+            //Create buffer for output. It consists of this format, each a byte unless otherwise stated: [status, reserved, appVersionMajor, appVersionMinor, libVersionMajor, libVersionMinor, (ushort)time]
+            byte[] buffer = new byte[8];
+            buffer[0] = (byte)InstanceStatusResult.NOT_CONNECTED;
+
+            //Find instance
+            ManagerInstance instance = session.GetInstanceById(BitConverter.ToInt64(msg.payload, 0));
+            if (instance != null && instance.linkedSession != null)
+            {
+                try
+                {
+                    //Send ping
+                    DateTime start = DateTime.UtcNow;
+                    var pingResult = await instance.linkedSession.SendPing(4000);
+                    if (pingResult != null)
+                    {
+                        //Success
+                        buffer[0] = (byte)InstanceStatusResult.ONLINE;
+                        buffer[2] = pingResult.Value.lib_version_major;
+                        buffer[3] = pingResult.Value.lib_version_minor;
+                        buffer[4] = pingResult.Value.app_version_major;
+                        buffer[5] = pingResult.Value.app_version_minor;
+                        BitConverter.GetBytes((ushort)Math.Min(ushort.MaxValue, (DateTime.UtcNow - start).TotalMilliseconds)).CopyTo(buffer, 6);
+                    } else
+                    {
+                        //Timed out
+                        buffer[0] = (byte)InstanceStatusResult.PING_TIMED_OUT;
+                    }
+                } catch
+                {
+                    buffer[0] = (byte)InstanceStatusResult.PING_FAILED;
+                }
+            }
+
+            //Send
+            msg.Respond(buffer, true);
         }
 
         private void OnCmdAddPackage(RouterMessage msg)
@@ -276,6 +319,38 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
                 instance.site_id = args.site_id;
                 session.Save();
                 session.RefreshSites();
+            }
+            catch (Exception ex)
+            {
+                logger.FinishFail($"Unexpected error: {ex.Message}{ex.StackTrace}");
+            }
+        }
+
+        private void OnCmdRebootInstance(RouterMessage msg)
+        {
+            //Decode arguments and create logger
+            ManagerRebootInstance args = msg.DeserializeAs<ManagerRebootInstance>();
+            MasterCommandLogger logger = new MasterCommandLogger(msg);
+
+            //Find instance
+            ManagerInstance instance = session.GetInstanceById(long.Parse(args.instance_id));
+            if (instance == null)
+            {
+                logger.FinishFail("Could not find that instance on the server.");
+                return;
+            }
+
+            //Run
+            try
+            {
+                //Shut down instance
+                logger.Log("REBOOT", "Shutting down instance...");
+                bool graceful = instance.StopInstance();
+                if(!graceful)
+                    logger.Log("REBOOT", "Instance was shut down forcefully!");
+
+                //Start
+                instance.StartInstance(session);
             }
             catch (Exception ex)
             {

@@ -46,6 +46,8 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
                     HandleRequestConfigCommand(session, msg);
                 else if (msg.opcode == RouterConnection.OPCODE_SYS_USERCFG)
                     HandleRequestUserConfigCommand(session, msg);
+                else if (msg.opcode == RouterConnection.OPCODE_SYS_RPC)
+                    HandleRequestRPCCommand(session, msg);
                 else
                     logger.Log("Io_OnClientMessage", $"Client {session.GetDebugName()} sent an unknown command ({msg.opcode}).", DeltaLogLevel.Debug);
             } else
@@ -121,6 +123,20 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
         private void HandleRequestUserConfigCommand(RouterSession session, RouterMessage msg)
         {
             ProxyRequestToMaster(session, msg, MasterConnectionOpcodes.OPCODE_MASTER_GETUSERCFG);
+        }
+
+        private void HandleRequestRPCCommand(RouterSession session, RouterMessage msg)
+        {
+            //We're going to attempt to dispatch this to all connected RPC servers locally.
+            //In the future, we'll likely send this to the master and let it dispatch it to all machines and regions, but not yet
+            //This will make only RPC sessions connected to this machine work, even if they're in a different process
+
+            //Find all connected RPC clients
+            var clients = this.session.GetConnectedInstancesByType(DeltaCoreNetServerType.API_RPC);
+
+            //Dispatch
+            foreach (var c in clients)
+                c.linkedSession.SendMessage(RouterConnection.OPCODE_SYS_RPC, msg.payload);
         }
 
         private void ProxyRequestToMaster(RouterSession session, RouterMessage msg, short opcode)

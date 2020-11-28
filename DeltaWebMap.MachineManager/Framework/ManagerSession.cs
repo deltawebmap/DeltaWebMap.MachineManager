@@ -263,6 +263,19 @@ namespace DeltaWebMap.MachineManager.Framework
             return null;
         }
 
+        public List<ManagerInstance> GetConnectedInstancesByType(DeltaCoreNetServerType type)
+        {
+            List<ManagerInstance> found = new List<ManagerInstance>();
+            foreach (var i in instances)
+            {
+                if (i.linkedSession == null)
+                    continue;
+                if (i.linkedSession.authenticatedType == type)
+                    found.Add(i);
+            }
+            return found;
+        }
+
         private const string CERT_ROOT_PATH = "/etc/letsencrypt/live/";
 
         /// <summary>
