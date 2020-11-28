@@ -71,6 +71,9 @@ namespace DeltaWebMap.MachineManager.Framework.MasterServer
 
         private void MasterConnection_OnConnected()
         {
+            //Log
+            Log("MasterConnection_OnConnected", $"Sending login info... (id {Program.connectionConfig.id})", DeltaLogLevel.Medium);
+            
             //Create login data
             byte[] sendBuffer = new byte[20];
             BitConverter.GetBytes(Program.connectionConfig.id).CopyTo(sendBuffer, 0);
