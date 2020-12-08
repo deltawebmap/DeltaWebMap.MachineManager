@@ -147,7 +147,7 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
             byte[] data = new byte[msg.payload.Length + 8];
 
             //Set instance ID and copy
-            BitConverter.GetBytes(session.linkedInstance.id);
+            BitConverter.GetBytes(session.linkedInstance.id).CopyTo(data, 0);
             msg.payload.CopyTo(data, 8);
 
             //Send to master
