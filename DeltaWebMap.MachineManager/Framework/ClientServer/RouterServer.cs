@@ -48,6 +48,8 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
                     HandleRequestUserConfigCommand(session, msg);
                 else if (msg.opcode == RouterConnection.OPCODE_SYS_RPC)
                     HandleRequestRPCCommand(session, msg);
+                else if (msg.opcode == RouterConnection.OPCODE_SYS_LOG)
+                    HandleRequestLogCommand(session, msg);
                 else
                     logger.Log("Io_OnClientMessage", $"Client {session.GetDebugName()} sent an unknown command ({msg.opcode}).", DeltaLogLevel.Debug);
             } else
@@ -137,6 +139,19 @@ namespace DeltaWebMap.MachineManager.Framework.ClientServer
             //Dispatch
             foreach (var c in clients)
                 c.linkedSession.SendMessage(RouterConnection.OPCODE_SYS_RPC, msg.payload);
+        }
+
+        private void HandleRequestLogCommand(RouterSession session, RouterMessage msg)
+        {
+            //Add the instance ID to the beginning of the payload, then send to the master
+            byte[] data = new byte[msg.payload.Length + 8];
+
+            //Set instance ID and copy
+            BitConverter.GetBytes(session.linkedInstance.id);
+            msg.payload.CopyTo(data, 8);
+
+            //Send to master
+            this.session.masterConnection.SendMessage(MasterConnectionOpcodes.OPCODE_MASTER_INSTANCE_LOG, data);
         }
 
         private void ProxyRequestToMaster(RouterSession session, RouterMessage msg, short opcode)
